@@ -1,7 +1,7 @@
 from airflow.policies import hookimpl
-from airflow.exceptions import AirflowClusterPolicyViolation
 
 from airflow.models.taskinstance import TaskInstance
+
 
 def check_api_response(url):
     """
@@ -9,6 +9,7 @@ def check_api_response(url):
     """
     import requests
     import sys
+
     headers = {
         "Authorization": "Bearer your-api-token"  ##TODO
     }
@@ -20,14 +21,13 @@ def check_api_response(url):
         print(response.json())
         sys.exit(1)
 
-    return response   
+    return response
 
 
 def check_using_user_role(user_id):
-
     """
-    My version of this method might be different from the checks you want to place. 
-    In this version I am checking if a user has a deployment role called `least_privilege_test`, he/she is not allowed to run the DAG. 
+    My version of this method might be different from the checks you want to place.
+    In this version I am checking if a user has a deployment role called `least_privilege_test`, he/she is not allowed to run the DAG.
     This is a custom role that I created just for testing. You can create your own role and and change this name or add your logic.
 
     Also, change the following:
@@ -35,8 +35,8 @@ def check_using_user_role(user_id):
     2. In line #43, replace your-deployment-id with your Astro Deployment ID
     3. In line #59, change the role name as per your testing
     """
-    users_endpoint =  'https://api.astronomer.io/iam/v1beta1/organizations/your-organization-id/users/{user_id}' ##TODO
-    deployment_id = "your-deployment-id" ##TODO
+    users_endpoint = "https://api.astronomer.io/iam/v1beta1/organizations/your-organization-id/users/{user_id}"  ##TODO
+    deployment_id = "your-deployment-id"  ##TODO
 
     ## make the API call to get the roles for the user_id
     response = check_api_response(users_endpoint.format(user_id=user_id))
@@ -44,20 +44,21 @@ def check_using_user_role(user_id):
     ## if any of the roles assigned to the user match the role that is not allowed to perform actions.
     ## this method will return False, which means, stop the execution
     if response.json():
-        deployment_roles = response.json()['deploymentRoles']
+        deployment_roles = response.json()["deploymentRoles"]
         print(deployment_roles)
         for depl_role in deployment_roles:
-            id = depl_role['deploymentId']
-            role = depl_role['role']
+            id = depl_role["deploymentId"]
+            role = depl_role["role"]
             print(id, role)
             if id == deployment_id:
                 print("found my deployment")
-                if role == 'least_privilege_test':
-                    return False ## don't continue
+                if role == "least_privilege_test":
+                    return False  ## don't continue
             else:
                 continue
-        
+
     return True  ## continue the DAG execution
+
 
 def check_user(dag_id, run_id, session=None):
     """
@@ -73,19 +74,20 @@ def check_user(dag_id, run_id, session=None):
       - None, if there is no exception
     """
     from airflow.settings import Session
+
     session = Session()
     print(dag_id, run_id)
 
-    if run_id.startswith('manual'):
+    if run_id.startswith("manual"):
         print("manual run...checking user ", run_id)
         query = """
                 select dttm, dag_id, run_id, execution_date, owner, event
                 from log
-                where dag_id = '{dag_id}' and event = 'trigger' 
+                where dag_id = '{dag_id}' and event = 'trigger'
                 order by dttm desc
         """
         results = session.execute(query.format(dag_id=dag_id)).fetchall()
-        print(results) 
+        print(results)
         if results:
             ## get the most recent entry
             user_id = results[0][4]
@@ -101,7 +103,7 @@ def check_user(dag_id, run_id, session=None):
         """
         results = session.execute(query.format(dag_id=dag_id, run_id=run_id)).fetchall()
 
-        print(results) 
+        print(results)
         if results:
             ## get the most recent entry
             user_id = results[0][4]
@@ -125,10 +127,12 @@ def task_instance_mutation_hook(task_instance: TaskInstance):
     if run_id is not None:
         user_id = check_user(dag_id, run_id)
         if user_id:
-            print("Found the User ID that is executing this DAG. Checking it's permissions...")
+            print(
+                "Found the User ID that is executing this DAG. Checking it's permissions..."
+            )
             if not check_using_user_role(user_id):
                 msg = "Ooops! You do not have the correct permission to run the DAG."
                 print(msg)
-                raise ValueError(msg) 
+                raise ValueError(msg)
         else:
             print("regular scheduled run")
